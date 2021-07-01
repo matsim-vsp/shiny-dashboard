@@ -49,7 +49,7 @@ ui <- fluidPage(
                  mainPanel(
                    fluidRow(
                      column(6,
-                            plotOutput("modal_split_trips"),
+                            plotlyOutput("modal_split_trips"),
                             actionButton(inputId = "button_main_mode_trips", label = "main mode"),
                             actionButton(inputId = "button_longest_mode_trips", label = "longest distance mode")),
                      column(6,
@@ -82,13 +82,15 @@ server <- function(input, output) {
   observeEvent(input$button_longest_mode_trips,
                {modal_split_trips$data <- ms_trips_longest$n
                modal_split_trips$pct <- ms_trips_longest$percent})
-  output$modal_split_trips <- renderPlot({
-    pie(modal_split_trips$data, labels = modal_split_trips$pct)
-    })
+
+  # output$modal_split_trips <- renderPlot({
+  #    pie(modal_split_trips$data, labels = modal_split_trips$pct)
+  # })
 
   ################### alternative with plotly ###
-  renderPlotly({
-    plot_ly(data = modal_split, y= ~modal_split$data, type = 'bar')})
+  output$modal_split_trips <- renderPlotly({
+    plot_ly(data = ms_trips_main, y= ~ms_trips_main$percent, type = 'bar')
+  })
 
  #Modal split (distance)
   modal_split_distance <- reactiveValues()
