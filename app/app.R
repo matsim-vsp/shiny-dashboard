@@ -16,8 +16,10 @@ trips3<- read.csv("data/berlin-v5.5.3-10pct.output_trips.csv", sep = ";", nrows=
 trips$dep_time <- strptime(trips$dep_time, tz= "", format = "%H:%M:%S")
 trips2$dep_time <- strptime(trips2$dep_time, tz= "", format = "%H:%M:%S")
 
-bezirke_shp <- read_sf("C:/Users/J/Documents/VSP_Berlin/Shapes/shp-bezirke/bezirke_berlin.shp") %>%
+bezirke_shp <- read_sf("C:/Users/J/Documents/VSP_Berlin/Shapes/bezirke_laender.shp") %>%
   st_transform(crs = 4326)
+
+
 
 #necessary calculations are done first
 
@@ -46,9 +48,9 @@ datasets <- list(trips_key, trips2_key, trips3_key)
 
 modal_split_trips_main_mode <- function(x){
   x %>%
-    group_by(SCHLUESSEL) %>%
+    group_by(Name) %>%
     count(main_mode) %>%
-    group_by(SCHLUESSEL) %>%
+    group_by(Name) %>%
     mutate(percent = 100*n/sum(n))
 }
 
@@ -90,9 +92,7 @@ trips_aggregated_15_mins <- function(x){
     separate(end_activity_type, into = c("end_activity", "x"), sep = "_")
 }
 
-ms_trips_main <- modal_split_trips_main_mode(trips_key)
-ms_trips2_main <- modal_split_trips_main_mode(trips2_key)
-ms_trips3_main <- modal_split_trips_main_mode(trips3_key)
+
 
 ms_trips_longest <- modal_split_trips_longest_mode(trips_key)
 ms_trips2_longest <- modal_split_trips_main_mode(trips2_key)
@@ -229,10 +229,11 @@ server <- function(input, output) {
   output$bezirke_map <- renderLeaflet({
     leaflet() %>%
       addPolygons(data = bezirke_shp,
-                  layerId = ~SCHLUESSEL
+                  layerId = ~Name
                   #colorFill = ~SCHLUESSEL == input$bezirk,
                   #color = c("grey", "blue")
-      )
+      ) %>%
+      setView(lat = 52.51630596154925, lng = 13.400792790272336, zoom = 8)
 
   })
 
@@ -245,22 +246,25 @@ server <- function(input, output) {
     input$bezirke_map_shape_click,
     {
       click <- input$bezirke_map_shape_click
-      if(is.null(click$id)) return ("123012")
+      if(is.null(click$id)) return ("Mitte")
       print(click$id)
 
       output$bezirke_map <- renderLeaflet({
-        filtered_map <- subset(bezirke_shp, bezirke_shp$SCHLUESSEL ==click$id)
+        filtered_map <- subset(bezirke_shp, bezirke_shp$Name ==click$id)
 
         leaflet() %>%
           addPolygons(data = bezirke_shp,
-                      layerId = ~SCHLUESSEL) %>%
+                      layerId = ~Name) %>%
           addPolygons(data = filtered_map,
-                      layerId = ~SCHLUESSEL,
-                      fillColor = "red")
+                      layerId = ~Name,
+                      fillColor = "red")%>%
+          setView(lat = 52.51630596154925, lng = 13.400792790272336, zoom = 8)
       })
 
+      ms_trips_main <- modal_split_trips_main_mode(trips_key)
+
       output$ms_bezirke <- renderPlotly({
-        filtered_data <- subset(ms_trips_main, ms_trips_main$SCHLUESSEL ==click$id)
+        filtered_data <- subset(ms_trips_main, ms_trips_main$Name ==click$id)
         plot_ly(x= filtered_data$main_mode, y = filtered_data$percent, type = "bar")
       })
     }
@@ -270,6 +274,9 @@ server <- function(input, output) {
 
 
   #Modal Split (trips)
+
+  ms_trips_main <- modal_split_trips_main_mode(trips_key)
+  ms_trips_longest <- modal_split_trips_longest_mode(trips_key)
 
   modal_split_trips <- reactiveValues()
   modal_split_trips$data <- (ms_trips_main$main_mode)
@@ -301,6 +308,9 @@ server <- function(input, output) {
 
   #Modal split (distance)
 
+  ms_distance_main <- modal_split_distance_main_mode(trips_key)
+  ms_distance_longest <- modal_split_distance_longest_mode(trips_key)
+
   modal_split_distance <- reactiveValues()
   modal_split_distance$data <- (ms_distance_main$main_mode)
   modal_split_distance$pct <- (ms_distance_main$percent)
@@ -328,7 +338,11 @@ server <- function(input, output) {
 
 
   #plot 3: trips by distance
+
+  trips_15_mins1 <- trips_aggregated_15_mins(trips_bez)
+
   output$ms_by_distance <- renderPlotly({
+
 
     filtered_data2 <- subset(trips, trips$main_mode == input$main_mode)
     plot_ly(x = filtered_data2$traveled_distance, type = "histogram") %>%
@@ -401,8 +415,8 @@ server <- function(input, output) {
     mydata2 <- modal_split_trips_main_mode(mydata2)
 
 
-    comparison <- plot_ly(mydata1, x = mydata1$main_mode, y= mydata1$percent, type = "bar") %>%
-      add_trace(mydata2, x= mydata2$main_mode, y = mydata2$percent)
+    comparison <- plot_ly(mydata1, x = mydata1$main_mode, y= mydata1$percent, type = "bar", name="dataset 1") %>%
+      add_trace(mydata2, x= mydata2$main_mode, y = mydata2$percent, name = "dataset 2")
 
 
     comparison
