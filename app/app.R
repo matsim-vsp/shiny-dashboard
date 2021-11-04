@@ -34,6 +34,7 @@ bezirke_shp <- read_sf(spatial_data) %>%
 # coordinate columns are used to georeference the csv file (here: start of trip), csv file is joined to spatial file
 # not all functions work on simple features (georeferenced data) so that column is dropped again
 
+
 sf_trips_start <- st_as_sf(trips, coords = c("start_x", "start_y"), crs = 31468)%>%
   st_transform(crs = 4326)
 sf_trips2_start <- st_as_sf(trips2, coords = c("start_x", "start_y"), crs = 31468)%>%
@@ -346,6 +347,9 @@ server <- function(input, output) {
   ms_trips_main <- modal_split_trips_main_mode(trips_key)
   ms_trips_longest <- modal_split_trips_longest_mode(trips_key)
 
+  ms_trips_main <- modal_split_trips_main_mode(trips_key)
+  ms_trips_longest <- modal_split_trips_longest_mode(trips_key)
+
   modal_split_trips <- reactiveValues()
   modal_split_trips$data <- (ms_trips_main$main_mode)
   modal_split_trips$pct <- (ms_trips_main$percent)
@@ -370,6 +374,9 @@ server <- function(input, output) {
 
 
   #plot 3: Modal split (distance)
+
+  ms_distance_main <- modal_split_distance_main_mode(trips_key)
+  ms_distance_longest <- modal_split_distance_longest_mode(trips_key)
 
   ms_distance_main <- modal_split_distance_main_mode(trips_key)
   ms_distance_longest <- modal_split_distance_longest_mode(trips_key)
@@ -404,8 +411,7 @@ server <- function(input, output) {
 
  output$ms_by_distance <- renderPlotly({
 
-
-    filtered_data2 <- subset(trips, trips$main_mode == input$main_mode)
+  filtered_data2 <- subset(trips, trips$main_mode == input$main_mode)
     plot_ly(x = filtered_data2$traveled_distance, type = "histogram") %>%
       layout(yaxis = list(title = "number of trips"),
              xaxis = list(title = "distance in meters"))
