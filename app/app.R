@@ -9,20 +9,21 @@ require(shinydashboard)
 
 # specify file paths
 
-main_file <- "data/berlin-v5.5.3-10pct.output_trips.csv"
-comparison_data1 <- "data/berlin-v5.5.3-10pct.output_trips.csv"
-comparison_data2 <- "data/berlin-v5.5.3-10pct.output_trips.csv"
+main_file <- "data/Hamburg/hamburg-v2.2-baseCase.output_trips_modified.csv"
+comparison_data1 <- "data/Hamburg/hamburg-v2.2-10pct-reallab2030.output_trips_modified.csv"
+comparison_data2 <- "data/Hamburg/hamburg-v2.2-10pct-reallab2030plus.output_trips_modified.csv"
+coordinate_system <- 32632
 
-spatial_data <- "C:/Users/J/Documents/VSP_Berlin/Shapes/bezirke_laender.shp"
+spatial_data <- "C:/Users/J/Documents/VSP_Berlin/Shapes/hamburg_metropo.shp"
 
 
 # load and transform data
 
-trips <- read.csv(main_file, sep = ";", nrows= 1000)
-trips2 <- read.csv(comparison_data1, sep = ";", nrows= 15000) %>%
-  slice_sample(n =1000)
-trips3 <- read.csv(comparison_data2, sep = ";", nrows= 15000) %>%
-  slice_sample(n =1000)
+trips <- read.csv(main_file, sep = ";")
+trips2 <- read.csv(comparison_data1, sep = ";")
+trips3 <- read.csv(comparison_data2, sep = ";")
+
+separate(trips, col = dep_time, into = c("day", "dep_time"), sep = " ")
 
 trips$dep_time <- strptime(trips$dep_time, tz= "", format = "%H:%M:%S")
 trips2$dep_time <- strptime(trips2$dep_time, tz= "", format = "%H:%M:%S")
@@ -35,11 +36,11 @@ bezirke_shp <- read_sf(spatial_data) %>%
 # not all functions work on simple features (georeferenced data) so that column is dropped again
 
 
-sf_trips_start <- st_as_sf(trips, coords = c("start_x", "start_y"), crs = 31468)%>%
+sf_trips_start <- st_as_sf(trips, coords = c("start_x", "start_y"), crs = coordinate_system)%>%
   st_transform(crs = 4326)
-sf_trips2_start <- st_as_sf(trips2, coords = c("start_x", "start_y"), crs = 31468)%>%
+sf_trips2_start <- st_as_sf(trips2, coords = c("start_x", "start_y"), crs = coordinate_system)%>%
   st_transform(crs = 4326)
-sf_trips3_start <- st_as_sf(trips3, coords = c("start_x", "start_y"), crs = 31468)%>%
+sf_trips3_start <- st_as_sf(trips3, coords = c("start_x", "start_y"), crs = coordinate_system)%>%
   st_transform(crs = 4326)
 
 trips_bez <- st_join(sf_trips_start, bezirke_shp)
@@ -57,9 +58,9 @@ datasets <- list(trips_key, trips2_key, trips3_key)
 
 modal_split_trips_main_mode <- function(x){
   x %>%
-    group_by(Name) %>%
+    group_by(name) %>%
     count(main_mode) %>%
-    group_by(Name) %>%
+    group_by(name) %>%
     mutate(percent = 100*n/sum(n))
 }
 
@@ -106,7 +107,7 @@ trips_aggregated_15_mins <- function(x){
 #some calculations are done outside of the server function to minimize waiting time
 
 ms_trips_longest <- modal_split_trips_longest_mode(trips_key)
-ms_trips2_longest <- modal_split_trips_main_mode(trips2_key)
+ms_trips2_longest <- modal_split_trips_longest_mode(trips2_key)
 
 ms_distance_main <- modal_split_distance_main_mode(trips_key)
 ms_distance2_main <- modal_split_distance_main_mode(trips2_key)
@@ -295,14 +296,15 @@ server <- function(input, output) {
   output$bezirke_map <- renderLeaflet({
     leaflet() %>%
       addPolygons(data = bezirke_shp,
-                  layerId = ~Name
+                  layerId = ~name
                   #colorFill = ~SCHLUESSEL == input$bezirk,
                   #color = c("grey", "blue")
       ) %>%
       addTiles() %>%
-      setView(lat = 52.51630596154925, lng = 13.400792790272336, zoom = 8)
+      setView(lat = 53.552402531942356, lng = 10.003379847823519, zoom = 8)
 
   })
+
 
 
   #map 1: add click-event and plot
@@ -315,22 +317,22 @@ server <- function(input, output) {
       print(click$id)
 
       output$bezirke_map <- renderLeaflet({
-        filtered_map <- subset(bezirke_shp, bezirke_shp$Name ==click$id)
+        filtered_map <- subset(bezirke_shp, bezirke_shp$name ==click$id)
 
         leaflet() %>%
           addPolygons(data = bezirke_shp,
-                      layerId = ~Name) %>%
+                      layerId = ~name) %>%
           addPolygons(data = filtered_map,
-                      layerId = ~Name,
+                      layerId = ~name,
                       fillColor = "red")%>%
           addTiles() %>%
-          setView(lat = 52.51630596154925, lng = 13.400792790272336, zoom = 8)
+          setView(lat = 53.552402531942356, lng = 10.003379847823519, zoom = 8)
       })
 
       ms_trips_main <- modal_split_trips_main_mode(trips_key)
 
       output$ms_bezirke <- renderPlotly({
-        filtered_data <- subset(ms_trips_main, ms_trips_main$Name ==click$id)
+        filtered_data <- subset(ms_trips_main, ms_trips_main$name ==click$id)
         plot_ly(x= filtered_data$main_mode, y = filtered_data$percent, type = "bar")
       })
     }
