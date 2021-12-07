@@ -7,294 +7,171 @@ require(lubridate)
 require(leaflet)
 require(shinydashboard)
 
-# specify file paths
+#spatial data
 
-main_file <- "data/berlin-v5.5.3-10pct.output_trips.csv"
-comparison_data1 <- "data/berlin-v5.5.3-10pct.output_trips.csv"
-comparison_data2 <- "data/berlin-v5.5.3-10pct.output_trips.csv"
+spatial_data_shp <- "C:/Users/J/Documents/VSP_Berlin/Shapes/bezirke_laender.shp"
 
-spatial_data <- "C:/Users/J/Documents/VSP_Berlin/Shapes/bezirke_laender.shp"
-
-
-# load and transform data
-
-trips <- read.csv(main_file, sep = ";", nrows= 1000)
-trips2 <- read.csv(comparison_data1, sep = ";", nrows= 15000) %>%
-  slice_sample(n =1000)
-trips3 <- read.csv(comparison_data2, sep = ";", nrows= 15000) %>%
-  slice_sample(n =1000)
-
-trips$dep_time <- strptime(trips$dep_time, tz= "", format = "%H:%M:%S")
-trips2$dep_time <- strptime(trips2$dep_time, tz= "", format = "%H:%M:%S")
-trips3$dep_time <- strptime(trips3$dep_time, tz= "", format = "%H:%M:%S")
-
-bezirke_shp <- read_sf(spatial_data) %>%
+spatial_data_shp <- read_sf(spatial_data_shp) %>%
   st_transform(crs = 4326)
 
-# coordinate columns are used to georeference the csv file (here: start of trip), csv file is joined to spatial file
-# not all functions work on simple features (georeferenced data) so that column is dropped again
+#read df necessary for layout
 
+trips_key <- readRDS("data/trips_key")
+trips_key_comp1 <- readRDS("data/trips_key_comp1")
+trips_key_comp2 <- readRDS("data/trips_key_comp2")
 
-sf_trips_start <- st_as_sf(trips, coords = c("start_x", "start_y"), crs = 31468)%>%
-  st_transform(crs = 4326)
-sf_trips2_start <- st_as_sf(trips2, coords = c("start_x", "start_y"), crs = 31468)%>%
-  st_transform(crs = 4326)
-sf_trips3_start <- st_as_sf(trips3, coords = c("start_x", "start_y"), crs = 31468)%>%
-  st_transform(crs = 4326)
-
-trips_bez <- st_join(sf_trips_start, bezirke_shp)
-trips2_bez <- st_join(sf_trips2_start, bezirke_shp)
-trips3_bez <- st_join(sf_trips3_start, bezirke_shp)
-
-trips_key <- st_drop_geometry(trips_bez)
-trips2_key <- st_drop_geometry(trips2_bez)
-trips3_key <- st_drop_geometry(trips3_bez)
-
-datasets <- list(trips_key, trips2_key, trips3_key)
-
-
-#functions are defined
-
-modal_split_trips_main_mode <- function(x){
-  x %>%
-    group_by(Name) %>%
-    count(main_mode) %>%
-    group_by(Name) %>%
-    mutate(percent = 100*n/sum(n))
-}
-
-modal_split_trips_longest_mode <- function(x){
-  x %>%
-    count(longest_distance_mode) %>%
-    mutate(percent= 100*n/sum(n))
-}
-
-modal_split_distance_main_mode <- function(x){
-  x %>%
-    group_by(main_mode) %>%
-    summarise(distance = sum(traveled_distance)) %>%
-    mutate(percent = round(100*distance/sum(distance),2))
-}
-
-modal_split_distance_longest_mode <- function(x){
-  x %>%
-    group_by(longest_distance_mode) %>%
-    summarise(distance = sum(traveled_distance)) %>%
-    mutate(percent = round(100*distance/sum(distance),2))
-}
-
-modal_split_by_distance <- function(x){
-  x %>%
-    mutate(sorted_distance = if_else(traveled_distance<1000, "less than 1km",
-                                     if_else(traveled_distance>= 1000 & traveled_distance<2000, "1 - 2km",
-                                             if_else(traveled_distance>=2000 & traveled_distance<5000, "2 - 5km",
-                                                     if_else(traveled_distance>=5000 & traveled_distance<10000, "5 - 10km",
-                                                             if_else(traveled_distance>=10000, "more than 10km", "ERROR")))))) %>%
-    group_by(sorted_distance) %>%
-    count(main_mode)
-}
-
-trips_aggregated_15_mins <- function(x){
-  x%>%
-    mutate(time_slot = floor_date(dep_time, unit = period(num = 15, units = "minutes"))) %>%
-    mutate(time_slot = substr(as.character(time_slot), 12, 19)) %>%
-    separate(end_activity_type, into = c("end_activity", "x"), sep = "_")
-}
-
-
-
-#some calculations are done outside of the server function to minimize waiting time
-
-ms_trips_longest <- modal_split_trips_longest_mode(trips_key)
-ms_trips2_longest <- modal_split_trips_main_mode(trips2_key)
-
-ms_distance_main <- modal_split_distance_main_mode(trips_key)
-ms_distance2_main <- modal_split_distance_main_mode(trips2_key)
-
-ms_trips_main <- modal_split_trips_main_mode(trips_key)
-ms_trips2_main <- modal_split_trips_main_mode(trips2_key)
-
-ms_trips_longest <- modal_split_trips_longest_mode(trips_key)
-ms_trips2_longest <- modal_split_trips_main_mode(trips2_key)
-
-ms_distance_main <- modal_split_distance_main_mode(trips_key)
-ms_distance2_main <- modal_split_distance_main_mode(trips2_key)
-
-ms_distance_longest <- modal_split_distance_longest_mode(trips_key)
-ms_distance2_longest <- modal_split_distance_longest_mode(trips2_key)
-
-ms_by_distance <- modal_split_by_distance(trips_key)
-
-ms_by_distance_table <- as.data.frame(ms_by_distance) %>%
-  spread(sorted_distance, n)
-ms_by_distance_table <- ms_by_distance_table[, c(1,5,2,3,4,6)]
-
-trips_15_mins1 <- trips_aggregated_15_mins(trips_bez)
-trips_15_mins2 <- trips_aggregated_15_mins(trips2_bez)
-
-ms_trips_main <- modal_split_trips_main_mode(trips_key)
-
+trips_15_mins <- readRDS("data/trips_15_mins")
 
 # Layout
-
 ui <- navbarPage("MATSim dashboard",
 
-    tabPanel("Start",
-             sidebarLayout(
-               sidebarPanel("A summary of the data and data sources"),
-               mainPanel(
-
-                 )
-               )
-             ),
-
-    navbarMenu("Current Run",
-
-    tabPanel("Modal Split",
-
-             sidebarLayout(
-
-               sidebarPanel("Click on a Bezirk or a Bundesland to see the modal split of trips originating there."),
-
-               mainPanel(
-                 fluidRow(align= "left", h3("Modal split by geographic origin")),
-                 fluidRow(
-                   column(6, leafletOutput("bezirke_map"),
-                   ),
-                   column(6, plotlyOutput("ms_bezirke"))),
-                 fluidRow(verbatimTextOutput("test")),
-                 fluidRow(align= "left", h3("Modal split summary", style ="margin-top: 20px")),
-                 fluidRow(
-                   column(6, style = "margin-bottom: 20px",
-                          plotlyOutput("modal_split_trips")),
-                   column(6, style = "margin-bottom: 20px",
-                          plotlyOutput("modal_split_distance"))),
-                 fluidRow(align = "center",
-                          actionButton(inputId = "button_main_mode_trips", label = "main mode"),
-                          actionButton(inputId = "button_longest_mode_trips", label = "longest distance mode"))
-               ))
-    ),
-    tabPanel("Travel distance",
-             sidebarLayout(
-               sidebarPanel("Select the main mode to see the distribution in travel distance."),
-               mainPanel(
-                 fluidRow(style = "margin-top: 20px",
-                          selectInput("main_mode", "Main Mode", choices = unique(trips$main_mode))
+                 tabPanel("Start",
+                          sidebarLayout(
+                            sidebarPanel("A summary of the data and data sources"),
+                            mainPanel()
+                          )
                  ),
-                 fluidRow(
-                   plotlyOutput("ms_by_distance")),
-                 fluidRow(style = "margin-top: 20px"#, h4("Summary Table")
-                          ),
-                 fluidRow(style = "margin-top: 20px",
-                          tableOutput("ms_by_distance_table"))
-               )
-             )
-    ),
-    tabPanel("Daily load curve",
-             sidebarLayout(
-               sidebarPanel("Select the activity to see the corresponding daily load curve."),
-               mainPanel(
-                 fluidRow(style = "margin-top: 20px",
-                          selectInput("end_activity", "Activity", choices = unique(trips_15_mins1$end_activity))
-                 ),
-                 fluidRow(
-                   plotlyOutput("daily_load_curve")),
 
-               )
-             ))),
-    navbarMenu("Comparison",
-               tabPanel("Modal Split",
-                        sidebarLayout(
-                          sidebarPanel("Choose the datasets you want to compare."),
-                          mainPanel(
-                            fluidRow( style = "margin-top: 20px"
+                 navbarMenu("Current Run",
+                            tabPanel("Modal Split",
+                                     sidebarLayout(
+                                       sidebarPanel("Click on a Bezirk or a Bundesland to see the modal split of trips originating there."),
+
+                                       mainPanel(
+                                         fluidRow(align= "left", h3("Modal split by geographic origin")),
+                                         fluidRow(
+                                           column(6, leafletOutput("map1"),
+                                           ),
+                                           column(6, plotlyOutput("ms_bezirke"))),
+                                         fluidRow(verbatimTextOutput("test")),
+                                         fluidRow(align= "left", h3("Modal split summary", style ="margin-top: 20px")),
+                                         fluidRow(
+                                           column(6, style = "margin-bottom: 20px",
+                                                  plotlyOutput("modal_split_trips")),
+                                           column(6, style = "margin-bottom: 20px",
+                                                  plotlyOutput("modal_split_distance"))),
+                                         fluidRow(align = "center",
+                                                  actionButton(inputId = "button_main_mode_trips", label = "main mode"),
+                                                  actionButton(inputId = "button_longest_mode_trips", label = "longest distance mode"))
+                                       ))
                             ),
-                            fluidRow(
-                              selectInput('ms_dataset1', 'Choose dataset 1:', choices = c("trips_key" = "1", "trips2_key" = "2", "trips3_key" = "3")),
-                              selectInput('ms_dataset2', 'Choose dataset 2:', choices = c("trips_key" = "1", "trips2_key" = "2", "trips3_key" = "3")),
-                              plotlyOutput("ms_comparison")
-                            )
-                          ))
-               ),
-
-               tabPanel("Travel Distance",
-                        sidebarLayout(
-                          sidebarPanel("Choose the datasets you want to compare and select the main mode to see the distribution in travel distance."),
-                          mainPanel(
-                            fluidRow( style = "margin-top: 20px"
+                            tabPanel("Travel distance",
+                                     sidebarLayout(
+                                       sidebarPanel("Select the main mode to see the distribution in travel distance."),
+                                       mainPanel(
+                                         fluidRow(style = "margin-top: 20px",
+                                                  selectInput("main_mode", "Main Mode", choices = unique(trips_key$main_mode))
+                                         ),
+                                         fluidRow(
+                                           plotlyOutput("ms_by_distance")),
+                                         fluidRow(style = "margin-top: 20px"#, h4("Summary Table")
+                                         ),
+                                         fluidRow(style = "margin-top: 20px",
+                                                  tableOutput("ms_by_distance_table"))
+                                       )
+                                     )
                             ),
-                            fluidRow(style = "margin-top: 20px",
-                              selectInput('td_dataset1', 'Choose dataset 1:', choices = c("trips_key" = "1", "trips2_key" = "2", "trips3_key" = "3")),
-                              selectInput('td_dataset2', 'Choose dataset 2:', choices = c("trips_key" = "1", "trips2_key" = "2", "trips3_key" = "3"))),
-                              fluidRow(style = "margin-top: 20px",
-                                       selectInput("td_main_mode", "Main Mode", choices = unique(trips$main_mode))
-                              ),
-                              fluidRow(
-                                plotlyOutput("td_comparison")),
-                              fluidRow(style = "margin-top: 20px"#, h4("Summary Table")
-                              ),
-                              fluidRow(style = "margin-top: 20px",
-                                       tableOutput("td_table_comparison"))
-                          ))
-               ),
-               tabPanel("Daily Load Curve",
-                        sidebarLayout(
-                          sidebarPanel("Choose the datasets you want to compare and select the activity to see the corresponding daily load curve."),
-                          mainPanel(
-                            fluidRow( style = "margin-top: 20px"
+                            tabPanel("Daily load curve",
+                                     sidebarLayout(
+                                       sidebarPanel("Select the activity to see the corresponding daily load curve."),
+                                       mainPanel(
+                                         fluidRow(style = "margin-top: 20px",
+                                                  selectInput("end_activity", "Activity", choices = unique(trips_15_mins$end_activity))
+                                         ),
+                                         fluidRow(
+                                           plotlyOutput("daily_load_curve")),
+
+                                       )
+                                     ))),
+                 navbarMenu("Comparison",
+                            tabPanel("Modal Split",
+                                     sidebarLayout(
+                                       sidebarPanel("Choose the datasets you want to compare."),
+                                       mainPanel(
+                                         fluidRow( style = "margin-top: 20px"
+                                         ),
+                                         fluidRow(
+                                           selectInput('ms_dataset1', 'Choose dataset 1:', choices = c("trips_key" = "1", "trips_comp1_key" = "2", "trips_comp2_key" = "3")),
+                                           selectInput('ms_dataset2', 'Choose dataset 2:', choices = c("trips_key" = "1", "trips_comp1_key" = "2", "trips_comp2_key" = "3")),
+                                           plotlyOutput("ms_comparison")
+                                         )
+                                       ))
                             ),
-                            fluidRow(
-                              selectInput('dl_dataset1', 'Choose dataset 1:', choices = c("trips_key" = "1", "trips2_key" = "2", "trips3_key" = "3")),
-                              selectInput('dl_dataset2', 'Choose dataset 2:', choices = c("trips_key" = "1", "trips2_key" = "2", "trips3_key" = "3")),
-                              selectInput("dl_end_activity", "Activity", choices = unique(trips_15_mins1$end_activity),
-                              plotlyOutput("dl_comparison")
 
-                            )
-                          ))
-               )
-               )),
-    navbarMenu("Examples",
-    tabPanel("Example1",
-             sidebarLayout(
-               sidebarPanel(" "),
-               mainPanel(
-                 fluidRow( style = "margin-top: 20px"
-                 ),
-                 fluidRow(
-                   plotlyOutput("mode"),
-                   plotlyOutput("wegekette")),
+                            tabPanel("Travel Distance",
+                                     sidebarLayout(
+                                       sidebarPanel("Choose the datasets you want to compare and select the main mode to see the distribution in travel distance."),
+                                       mainPanel(
+                                         fluidRow( style = "margin-top: 20px"
+                                         ),
+                                         fluidRow(style = "margin-top: 20px",
+                                                  selectInput('td_dataset1', 'Choose dataset 1:', choices = c("trips_key" = "1", "trips_comp1_key" = "2", "trips_comp2_key" = "3")),
+                                                  selectInput('td_dataset2', 'Choose dataset 2:', choices = c("trips_key" = "1", "trips_comp1_key" = "2", "trips_comp2_key" = "3"))),
+                                         fluidRow(style = "margin-top: 20px",
+                                                  selectInput("td_main_mode", "Main Mode", choices = unique(trips$main_mode))
+                                         ),
+                                         fluidRow(
+                                           plotlyOutput("td_comparison")),
+                                         fluidRow(style = "margin-top: 20px"#, h4("Summary Table")
+                                         ),
+                                         fluidRow(style = "margin-top: 20px",
+                                                  tableOutput("td_table_comparison"))
+                                       ))
+                            ),
+                            tabPanel("Daily Load Curve",
+                                     sidebarLayout(
+                                       sidebarPanel("Choose the datasets you want to compare and select the activity to see the corresponding daily load curve."),
+                                       mainPanel(
+                                         fluidRow( style = "margin-top: 20px"
+                                         ),
+                                         fluidRow(
+                                           selectInput('dl_dataset1', 'Choose dataset 1:', choices = c("trips_key" = "1", "trips_comp1_key" = "2", "trips_comp2_key" = "3")),
+                                           selectInput('dl_dataset2', 'Choose dataset 2:', choices = c("trips_key" = "1", "trips_comp1_key" = "2", "trips_comp2_key" = "3")),
+                                           selectInput("dl_end_activity", "Activity", choices = unique(trips_15_mins$end_activity),
+                                                       plotlyOutput("dl_comparison")
 
-               )
-             )),
+                                           )
+                                         ))
+                                     )
+                            )),
+                 navbarMenu("Examples",
+                            tabPanel("Example1",
+                                     sidebarLayout(
+                                       sidebarPanel(" "),
+                                       mainPanel(
+                                         fluidRow( style = "margin-top: 20px"
+                                         ),
+                                         fluidRow(
+                                           plotlyOutput("mode"),
+                                           plotlyOutput("wegekette")),
 
-    tabPanel("Example2",
-             sidebarLayout(
-               sidebarPanel(" "),
-               mainPanel(
-                 fluidRow( style = "margin-top: 20px"
-                 ),
-                 fluidRow(
-                   plotlyOutput("entfernung"),
-                   plotlyOutput("wegekette2")),
+                                       )
+                                     )),
 
-               )
-             )))
-    )
+                            tabPanel("Example2",
+                                     sidebarLayout(
+                                       sidebarPanel(" "),
+                                       mainPanel(
+                                         fluidRow( style = "margin-top: 20px"
+                                         ),
+                                         fluidRow(
+                                           plotlyOutput("entfernung"),
+                                           plotlyOutput("wegekette2")),
+
+                                       )
+                                     )))
+)
 
 
 
 server <- function(input, output) {
 
-  #Startpage
-  #boxes
-
-
   #Main Run - Modal split
   #map 1: Bezirke Berlin
 
-  output$bezirke_map <- renderLeaflet({
+  output$map1 <- renderLeaflet({
     leaflet() %>%
-      addPolygons(data = bezirke_shp,
+      addPolygons(data = spatial_data_shp,
                   layerId = ~Name
                   #colorFill = ~SCHLUESSEL == input$bezirk,
                   #color = c("grey", "blue")
@@ -307,18 +184,20 @@ server <- function(input, output) {
 
   #map 1: add click-event and plot
 
+  ms_trips_main_mode <- readRDS("data/ms_trips_main_mode")
+
   observeEvent(
-    input$bezirke_map_shape_click,
+    input$map1_shape_click,
     {
-      click <- input$bezirke_map_shape_click
+      click <- input$map1_shape_click
       if(is.null(click$id)) return ("Mitte")
       print(click$id)
 
-      output$bezirke_map <- renderLeaflet({
-        filtered_map <- subset(bezirke_shp, bezirke_shp$Name ==click$id)
+      output$map1 <- renderLeaflet({
+        filtered_map <- subset(spatial_data_shp, spatial_data_shp$Name ==click$id)
 
         leaflet() %>%
-          addPolygons(data = bezirke_shp,
+          addPolygons(data = spatial_data_shp,
                       layerId = ~Name) %>%
           addPolygons(data = filtered_map,
                       layerId = ~Name,
@@ -327,41 +206,31 @@ server <- function(input, output) {
           setView(lat = 52.51630596154925, lng = 13.400792790272336, zoom = 8)
       })
 
-      ms_trips_main <- modal_split_trips_main_mode(trips_key)
-
       output$ms_bezirke <- renderPlotly({
-        filtered_data <- subset(ms_trips_main, ms_trips_main$Name ==click$id)
+        filtered_data <- subset(ms_trips_main_mode, ms_trips_main_mode$Name ==click$id)
         plot_ly(x= filtered_data$main_mode, y = filtered_data$percent, type = "bar")
       })
     }
   )
 
 
-
-
   #plot 2: Modal Split (trips)
 
-  ms_trips_main <- modal_split_trips_main_mode(trips_key)
-  ms_trips_longest <- modal_split_trips_longest_mode(trips_key)
-
-  ms_trips_main <- modal_split_trips_main_mode(trips_key)
-  ms_trips_longest <- modal_split_trips_longest_mode(trips_key)
-
-  ms_trips_main <- modal_split_trips_main_mode(trips_key)
-  ms_trips_longest <- modal_split_trips_longest_mode(trips_key)
+  ms_trips_main_mode <- readRDS("data/ms_trips_main_mode")
+  ms_trips_longest_mode <- readRDS("data/ms_trips_longest_mode")
 
   modal_split_trips <- reactiveValues()
-  modal_split_trips$data <- (ms_trips_main$main_mode)
-  modal_split_trips$pct <- (ms_trips_main$percent)
+  modal_split_trips$data <- (ms_trips_main_mode$main_mode)
+  modal_split_trips$pct <- (ms_trips_main_mode$percent)
 
   observeEvent(input$button_main_mode_trips,
-               {modal_split_trips$data <- (ms_trips_main$main_mode)
-               modal_split_trips$pct <- (ms_trips_main$percent)
+               {modal_split_trips$data <- (ms_trips_main_mode$main_mode)
+               modal_split_trips$pct <- (ms_trips_main_mode$percent)
                print(modal_split_trips$pct)})
 
   observeEvent(input$button_longest_mode_trips,
-               {modal_split_trips$data <- (ms_trips_longest$longest_distance_mode)
-               modal_split_trips$pct <- (ms_trips_longest$percent)
+               {modal_split_trips$data <- (ms_trips_longest_mode$longest_distance_mode)
+               modal_split_trips$pct <- (ms_trips_longest_mode$percent)
                print(modal_split_trips$pct)})
 
   output$modal_split_trips <- renderPlotly({
@@ -375,27 +244,23 @@ server <- function(input, output) {
 
   #plot 3: Modal split (distance)
 
-  ms_distance_main <- modal_split_distance_main_mode(trips_key)
-  ms_distance_longest <- modal_split_distance_longest_mode(trips_key)
 
-  ms_distance_main <- modal_split_distance_main_mode(trips_key)
-  ms_distance_longest <- modal_split_distance_longest_mode(trips_key)
 
-  ms_distance_main <- modal_split_distance_main_mode(trips_key)
-  ms_distance_longest <- modal_split_distance_longest_mode(trips_key)
+  ms_distance_main_mode <- readRDS("data/ms_distance_main_mode")
+  ms_distance_longest_mode <- readRDS("data/ms_distance_longest_mode")
 
   modal_split_distance <- reactiveValues()
-  modal_split_distance$data <- (ms_distance_main$main_mode)
-  modal_split_distance$pct <- (ms_distance_main$percent)
+  modal_split_distance$data <- (ms_distance_main_mode$main_mode)
+  modal_split_distance$pct <- (ms_distance_main_mode$percent)
 
   observeEvent(input$button_main_mode_trips,
-               {modal_split_distance$data <- (ms_distance_main$main_mode)
-               modal_split_distance$pct <- (ms_distance_main$percent)
+               {modal_split_distance$data <- (ms_distance_main_mode$main_mode)
+               modal_split_distance$pct <- (ms_distance_main_mode$percent)
                print(modal_split_distance$pct)})
 
   observeEvent(input$button_longest_mode_trips,
-               {modal_split_distance$data <- (ms_distance_longest$longest_distance_mode)
-               modal_split_distance$pct <- (ms_distance_longest$percent)
+               {modal_split_distance$data <- (ms_distance_longest_mode$longest_distance_mode)
+               modal_split_distance$pct <- (ms_distance_longest_mode$percent)
                print(modal_split_distance$pct)})
 
   output$modal_split_distance <- renderPlotly({
@@ -409,9 +274,9 @@ server <- function(input, output) {
   #Main run - Travel distance
   #plot 4: trips by distance
 
- output$ms_by_distance <- renderPlotly({
+  output$ms_by_distance <- renderPlotly({
 
-  filtered_data2 <- subset(trips, trips$main_mode == input$main_mode)
+    filtered_data2 <- subset(trips, trips$main_mode == input$main_mode)
     plot_ly(x = filtered_data2$traveled_distance, type = "histogram") %>%
       layout(yaxis = list(title = "number of trips"),
              xaxis = list(title = "distance in meters"))
@@ -423,11 +288,11 @@ server <- function(input, output) {
   #Main run - Daily Load Curve
   #plot 5: daily load curve
 
-  trips_15_mins1 <- trips_aggregated_15_mins(trips_bez)
+  trips_15_mins <- readRDS("data/trips_15_mins")
 
   output$daily_load_curve <- renderPlotly({
 
-    filtered_data3 <- subset(trips_15_mins1, trips_15_mins1$end_activity == input$end_activity)
+    filtered_data3 <- subset(trips_15_mins, trips_15_mins$end_activity == input$end_activity)
     plot_ly(x = filtered_data3$time_slot, type = "histogram") %>%
       layout(yaxis = list(title = "number of trips"),
              xaxis = list(title = "time"))
@@ -468,7 +333,7 @@ server <- function(input, output) {
 
   td_datasetInput1 <- reactive({
     td_temp1 <- data.frame(datasets[[as.numeric(input$td_dataset1)]])
-      })
+  })
 
   td_datasetInput2 <- reactive({
     td_temp2 <- data.frame(datasets[[as.numeric(input$td_dataset2)]])
@@ -495,7 +360,7 @@ server <- function(input, output) {
 
   dl_datasetInput1 <- reactive({
     dl_temp1 <- data.frame(datasets[[as.numeric(input$dl_dataset1)]])
-      })
+  })
 
   dl_datasetInput2 <- reactive({
     dl_temp2 <- data.frame(datasets[[as.numeric(input$dl_dataset2)]])
