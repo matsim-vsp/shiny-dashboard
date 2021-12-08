@@ -22,6 +22,7 @@ trips_key_comp2 <- readRDS("data/trips_key_comp2")
 
 trips_15_mins <- readRDS("data/trips_15_mins")
 
+
 # Layout
 ui <- navbarPage("MATSim dashboard",
 
@@ -42,7 +43,7 @@ ui <- navbarPage("MATSim dashboard",
                                          fluidRow(
                                            column(6, leafletOutput("map1"),
                                            ),
-                                           column(6, plotlyOutput("ms_bezirke"))),
+                                           column(6, plotlyOutput("ms_spatial"))),
                                          fluidRow(verbatimTextOutput("test")),
                                          fluidRow(align= "left", h3("Modal split summary", style ="margin-top: 20px")),
                                          fluidRow(
@@ -91,8 +92,8 @@ ui <- navbarPage("MATSim dashboard",
                                          fluidRow( style = "margin-top: 20px"
                                          ),
                                          fluidRow(
-                                           selectInput('ms_dataset1', 'Choose dataset 1:', choices = c("trips_key" = "1", "trips_comp1_key" = "2", "trips_comp2_key" = "3")),
-                                           selectInput('ms_dataset2', 'Choose dataset 2:', choices = c("trips_key" = "1", "trips_comp1_key" = "2", "trips_comp2_key" = "3")),
+                                           selectInput('ms_dataset1', 'Choose dataset 1:', choices = c("main data" = "1", "comparison data 1" = "2", "comparison data 2" = "3")),
+                                           selectInput('ms_dataset2', 'Choose dataset 2:', choices = c("main data" = "1", "comparison data 1" = "2", "comparison data 2" = "3")),
                                            plotlyOutput("ms_comparison")
                                          )
                                        ))
@@ -105,8 +106,8 @@ ui <- navbarPage("MATSim dashboard",
                                          fluidRow( style = "margin-top: 20px"
                                          ),
                                          fluidRow(style = "margin-top: 20px",
-                                                  selectInput('td_dataset1', 'Choose dataset 1:', choices = c("trips_key" = "1", "trips_comp1_key" = "2", "trips_comp2_key" = "3")),
-                                                  selectInput('td_dataset2', 'Choose dataset 2:', choices = c("trips_key" = "1", "trips_comp1_key" = "2", "trips_comp2_key" = "3"))),
+                                                  selectInput('td_dataset1', 'Choose dataset 1:', choices = c("main data" = "1", "comparison data 1" = "2", "comparison data 2" = "3")),
+                                                  selectInput('td_dataset2', 'Choose dataset 2:', choices = c("main data" = "1", "comparison data 1" = "2", "comparison data 2" = "3"))),
                                          fluidRow(style = "margin-top: 20px",
                                                   selectInput("td_main_mode", "Main Mode", choices = unique(trips$main_mode))
                                          ),
@@ -125,15 +126,15 @@ ui <- navbarPage("MATSim dashboard",
                                          fluidRow( style = "margin-top: 20px"
                                          ),
                                          fluidRow(
-                                           selectInput('dl_dataset1', 'Choose dataset 1:', choices = c("trips_key" = "1", "trips_comp1_key" = "2", "trips_comp2_key" = "3")),
-                                           selectInput('dl_dataset2', 'Choose dataset 2:', choices = c("trips_key" = "1", "trips_comp1_key" = "2", "trips_comp2_key" = "3")),
-                                           selectInput("dl_end_activity", "Activity", choices = unique(trips_15_mins$end_activity),
-                                                       plotlyOutput("dl_comparison")
+                                           selectInput("dl_dataset1", 'Choose dataset 1:', choices = c("main data" = "1", "comparison data 1" = "2", "comparison data 2" = "3")),
+                                           selectInput("dl_dataset2", 'Choose dataset 2:', choices = c("main data" = "1", "comparison data 1" = "2", "comparison data 2" = "3")),
+                                           selectInput("dl_end_activity", "Activity", choices = unique(trips_15_mins$end_activity)),
+                                           plotlyOutput("dl_comparison")
 
-                                           )
-                                         ))
-                                     )
-                            )),
+                                         )
+                                       ))
+                            )
+                 ),
                  navbarMenu("Examples",
                             tabPanel("Example1",
                                      sidebarLayout(
@@ -167,15 +168,14 @@ ui <- navbarPage("MATSim dashboard",
 server <- function(input, output) {
 
   #Main Run - Modal split
-  #map 1: Bezirke Berlin
+  #map 1: clickable map showing the modal split
+
+  #base
 
   output$map1 <- renderLeaflet({
     leaflet() %>%
       addPolygons(data = spatial_data_shp,
-                  layerId = ~Name
-                  #colorFill = ~SCHLUESSEL == input$bezirk,
-                  #color = c("grey", "blue")
-      ) %>%
+                  layerId = ~Name) %>%
       addTiles() %>%
       setView(lat = 52.51630596154925, lng = 13.400792790272336, zoom = 8)
 
@@ -184,14 +184,13 @@ server <- function(input, output) {
 
   #map 1: add click-event and plot
 
-  ms_trips_main_mode <- readRDS("data/ms_trips_main_mode")
+  ms_trips_main_mode_spatial <- readRDS("data/ms_trips_main_mode_spatial")
 
   observeEvent(
     input$map1_shape_click,
     {
       click <- input$map1_shape_click
       if(is.null(click$id)) return ("Mitte")
-      print(click$id)
 
       output$map1 <- renderLeaflet({
         filtered_map <- subset(spatial_data_shp, spatial_data_shp$Name ==click$id)
@@ -206,8 +205,8 @@ server <- function(input, output) {
           setView(lat = 52.51630596154925, lng = 13.400792790272336, zoom = 8)
       })
 
-      output$ms_bezirke <- renderPlotly({
-        filtered_data <- subset(ms_trips_main_mode, ms_trips_main_mode$Name ==click$id)
+      output$ms_spatial <- renderPlotly({
+        filtered_data <- subset(ms_trips_main_mode_spatial, ms_trips_main_mode_spatial$Name ==click$id)
         plot_ly(x= filtered_data$main_mode, y = filtered_data$percent, type = "bar")
       })
     }
@@ -226,12 +225,12 @@ server <- function(input, output) {
   observeEvent(input$button_main_mode_trips,
                {modal_split_trips$data <- (ms_trips_main_mode$main_mode)
                modal_split_trips$pct <- (ms_trips_main_mode$percent)
-               print(modal_split_trips$pct)})
+               })
 
   observeEvent(input$button_longest_mode_trips,
                {modal_split_trips$data <- (ms_trips_longest_mode$longest_distance_mode)
                modal_split_trips$pct <- (ms_trips_longest_mode$percent)
-               print(modal_split_trips$pct)})
+               })
 
   output$modal_split_trips <- renderPlotly({
     plot_ly(x =  modal_split_trips$data, y= modal_split_trips$pct, type = 'bar') %>%
@@ -244,8 +243,6 @@ server <- function(input, output) {
 
   #plot 3: Modal split (distance)
 
-
-
   ms_distance_main_mode <- readRDS("data/ms_distance_main_mode")
   ms_distance_longest_mode <- readRDS("data/ms_distance_longest_mode")
 
@@ -256,12 +253,12 @@ server <- function(input, output) {
   observeEvent(input$button_main_mode_trips,
                {modal_split_distance$data <- (ms_distance_main_mode$main_mode)
                modal_split_distance$pct <- (ms_distance_main_mode$percent)
-               print(modal_split_distance$pct)})
+               })
 
   observeEvent(input$button_longest_mode_trips,
                {modal_split_distance$data <- (ms_distance_longest_mode$longest_distance_mode)
                modal_split_distance$pct <- (ms_distance_longest_mode$percent)
-               print(modal_split_distance$pct)})
+               })
 
   output$modal_split_distance <- renderPlotly({
     plot_ly(x =  modal_split_distance$data, y= modal_split_distance$pct, type = 'bar') %>%
@@ -282,6 +279,7 @@ server <- function(input, output) {
              xaxis = list(title = "distance in meters"))
   })
 
+  ms_by_distance_table <- readRDS("data/ms_main_mode_sorted_by_distance")
   output$ms_by_distance_table <- renderTable({ms_by_distance_table})
 
 
@@ -302,22 +300,28 @@ server <- function(input, output) {
   #Comparison - Modal Split
   #plot 6  - modal split comparison
 
+  #read dfs to compare and turn them into a list of dataframes
+
+  ms_trips_main_mode <- readRDS("data/ms_trips_main_mode")
+  ms_trips_main_mode_comp1 <- readRDS("data/ms_trips_main_mode_comp1")
+  ms_trips_main_mode_comp2 <- readRDS("data/ms_trips_main_mode_comp2")
+
+  datasets_ms_trips_main_mode <- list(ms_trips_main_mode, ms_trips_main_mode_comp1, ms_trips_main_mode_comp2)
+
+  # use input from dropdown menu to choose item on list and turn into plot
   ms_datasetInput1 <- reactive({
-    ms_temp1 <- data.frame(datasets[[as.numeric(input$ms_dataset1)]])
-    print(ms_temp1)
+    ms_temp1 <- data.frame(datasets_ms_trips_main_mode[[as.numeric(input$ms_dataset1)]])
   })
 
   ms_datasetInput2 <- reactive({
-    ms_temp2 <- data.frame(datasets[[as.numeric(input$ms_dataset2)]])
+    ms_temp2 <- data.frame(datasets_ms_trips_main_mode[[as.numeric(input$ms_dataset2)]])
   })
 
 
   output$ms_comparison <- renderPlotly({
     ms_data1 <- ms_datasetInput1()
-    ms_data1 <- modal_split_trips_main_mode(ms_data1)
 
     ms_data2 <- ms_datasetInput2()
-    ms_data2 <- modal_split_trips_main_mode(ms_data2)
 
     ms_comparison <- plot_ly(ms_data1, x = ms_data1$main_mode, y= ms_data1$percent, type = "bar", name="dataset 1") %>%
       add_trace(ms_data2, x= ms_data2$main_mode, y = ms_data2$percent, name = "dataset 2") %>%
@@ -331,12 +335,18 @@ server <- function(input, output) {
   #Comparison - Travel Distance
   #plot 7 - travel distance
 
+  #create list of datasets (using trips this time - subset() should be quick enough)
+
+  datasets_trips <- list(trips_key, trips2_key, trips3_key)
+
+  #use input from dropdown menu to choose item on list and turn into plot
+
   td_datasetInput1 <- reactive({
-    td_temp1 <- data.frame(datasets[[as.numeric(input$td_dataset1)]])
+    td_temp1 <- data.frame(datasets_trips[[as.numeric(input$td_dataset1)]])
   })
 
   td_datasetInput2 <- reactive({
-    td_temp2 <- data.frame(datasets[[as.numeric(input$td_dataset2)]])
+    td_temp2 <- data.frame(datasets_trips[[as.numeric(input$td_dataset2)]])
   })
 
   output$td_comparison <- renderPlotly({
@@ -358,22 +368,29 @@ server <- function(input, output) {
   #Comparison- Daily Load curve
   #plot8 - daily load curve
 
+  #load datasets and create list
+  trips_15_mins <- readRDS("data/trips_15_mins")
+  trips_15_mins_comp1 <- readRDS("data/trips_15_mins_comp1")
+  trips_15_mins_comp2 <- readRDS("data/trips_15_mins_comp2")
+
+  datasets_trips_15_mins <- list(trips_15_mins, trips_15_mins_comp1, trips_15_mins_comp2)
+
+  #use input from dropdown menu to choose item on list and turn into plot
+
   dl_datasetInput1 <- reactive({
-    dl_temp1 <- data.frame(datasets[[as.numeric(input$dl_dataset1)]])
+    dl_temp1 <- data.frame(datasets_trips_15_mins[[as.numeric(input$dl_dataset1)]])
   })
 
   dl_datasetInput2 <- reactive({
-    dl_temp2 <- data.frame(datasets[[as.numeric(input$dl_dataset2)]])
+    dl_temp2 <- data.frame(datasets_trips_15_mins[[as.numeric(input$dl_dataset2)]])
   })
 
   output$dl_comparison <- renderPlotly({
     dl_data1 <- dl_datasetInput1()
-    dl_data1 <- trips_aggregated_15_mins(dl_data1)
     dl_data1 <- subset(dl_data1, dl_data1$end_activity == input$dl_end_activity)
 
 
     dl_data2 <- dl_datasetInput2()
-    dl_data2 <- trips_aggregated_15_mins(dl_data2)
     dl_data2 <- subset(dl_data2, dl_data2$end_activity == input$dl_end_activity)
 
 
@@ -419,31 +436,6 @@ server <- function(input, output) {
       filter (traveled_distance %in% d$x) %>%
       count(modes) %>%
       plot_ly(x=~modes, y=~n)
-  })
-
-  #comparison
-
-  datasetInput1 <- reactive({
-    temp1 <- data.frame(datasets[[as.numeric(input$dataset1)]])
-  })
-
-  datasetInput2 <- reactive({
-    temp2 <- data.frame(datasets[[as.numeric(input$dataset2)]])
-  })
-
-  output$comparison <- renderPlotly({
-    mydata1 <- datasetInput1()
-    mydata1 <- modal_split_trips_main_mode(mydata1)
-
-    mydata2 <- datasetInput2()
-    mydata2 <- modal_split_trips_main_mode(mydata2)
-
-
-    comparison <- plot_ly(mydata1, x = mydata1$main_mode, y= mydata1$percent, type = "bar", name="dataset 1") %>%
-      add_trace(mydata2, x= mydata2$main_mode, y = mydata2$percent, name = "dataset 2")
-
-
-    comparison
   })
 
 

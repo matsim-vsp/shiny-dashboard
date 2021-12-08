@@ -31,7 +31,7 @@ trips_comp2$dep_time <- strptime(trips_comp2$dep_time, tz= "", format = "%H:%M:%
 spatial_data_shp <- read_sf(spatial_data_shp) %>%
   st_transform(crs = 4326)
 
-# coordinate columns are used to georeference the csv file (here: start of trip), csv file is joined to spatial file
+# columns with coordinates are used to georeference the csv file (here: start of trip), csv file is joined to spatial file
 # not all functions work on simple features (georeferenced data) so that column is dropped again
 
 
@@ -49,8 +49,6 @@ trips_spatial_data_comp2 <- st_join(sf_trips_start_comp2, spatial_data_shp)
 trips_key <- st_drop_geometry(trips_spatial_data)
 trips_key_comp1 <- st_drop_geometry(trips_spatial_data_comp1)
 trips_key_comp2 <- st_drop_geometry(trips_spatial_data_comp2)
-
-datasets <- list(trips_key, trips_key_comp1, trips_key_comp2)
 
 
 #functions are defined
